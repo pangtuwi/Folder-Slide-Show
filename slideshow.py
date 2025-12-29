@@ -10,38 +10,128 @@ from pathlib import Path
 from tkinter import Tk, Label, Canvas
 from PIL import Image, ImageTk
 import argparse
+import json
+from datetime import datetime
+
+
+def get_state_file_path():
+    """
+    Returns the Path object for the state file.
+    Uses script directory to ensure state file is with the application.
+    """
+    return Path(__file__).parent / "slideshow_state.json"
+
+
+def normalize_directory_path(path):
+    """
+    Normalize a directory path to absolute, resolved form.
+
+    Args:
+        path: Path object or string
+
+    Returns:
+        str: Normalized absolute path as string
+    """
+    return str(Path(path).resolve())
+
+
+def load_state():
+    """
+    Load the slideshow state from JSON file.
+
+    Returns:
+        dict: State dictionary, or empty structure if file doesn't exist or is invalid
+    """
+    state_file = get_state_file_path()
+
+    if not state_file.exists():
+        return {"version": "1.0", "directories": {}}
+
+    try:
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+
+        # Validate structure
+        if not isinstance(state, dict) or 'directories' not in state:
+            print("Warning: Invalid state file structure, resetting")
+            return {"version": "1.0", "directories": {}}
+
+        return state
+
+    except json.JSONDecodeError as e:
+        print(f"Warning: Corrupted state file ({e}), starting fresh")
+        return {"version": "1.0", "directories": {}}
+    except PermissionError:
+        print("Warning: Cannot read state file (permission denied)")
+        return {"version": "1.0", "directories": {}}
+    except Exception as e:
+        print(f"Warning: Error loading state file ({e})")
+        return {"version": "1.0", "directories": {}}
+
+
+def save_state(state):
+    """
+    Save the slideshow state to JSON file.
+
+    Args:
+        state: State dictionary to save
+    """
+    state_file = get_state_file_path()
+    temp_file = state_file.with_suffix('.tmp')
+
+    try:
+        # Write to temp file first
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
+
+        # Atomic rename
+        temp_file.replace(state_file)
+
+    except Exception as e:
+        print(f"Warning: Could not save state ({e})")
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 class ImageSlideshow:
-    def __init__(self, root_dir, fullscreen=False, delay=3000):
+    def __init__(self, root_dir, fullscreen=False, delay=3000, resume=False):
         """
         Initialize the slideshow
-        
+
         Args:
             root_dir: Root directory to search for images
             fullscreen: Whether to start in fullscreen mode
             delay: Auto-advance delay in milliseconds (0 = manual only)
+            resume: Whether to resume from last viewed image
         """
         self.root_dir = Path(root_dir)
         self.fullscreen = fullscreen
         self.delay = delay
-        self.current_index = 0
         self.auto_play = delay > 0
         self.timer_id = None
         self.resize_timer_id = None
-        
+
         # Supported image extensions
         self.image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
-        
+
         # Find all images
         print(f"Searching for images in {self.root_dir}...")
         self.image_paths = self.find_images()
         print(f"Found {len(self.image_paths)} images")
-        
+
         if not self.image_paths:
             print("No images found!")
             sys.exit(1)
-        
+
+        # Handle resume functionality
+        if resume:
+            state = load_state()
+            self.current_index = self.get_resume_index(state)
+            if self.current_index > 0:
+                print(f"Resuming from image {self.current_index + 1}/{len(self.image_paths)}")
+        else:
+            self.current_index = 0
+
         # Setup GUI
         self.root = Tk()
         self.root.title("Image Slideshow")
@@ -154,7 +244,70 @@ class ImageSlideshow:
         """Show previous image"""
         self.current_index = (self.current_index - 1) % len(self.image_paths)
         self.display_image()
-    
+
+    def get_resume_index(self, state):
+        """
+        Determine the starting index from saved state.
+
+        Args:
+            state: Loaded state dictionary
+
+        Returns:
+            int: Index to start from (0 if no valid state found)
+        """
+        # Get normalized directory key
+        dir_key = normalize_directory_path(self.root_dir)
+
+        # Check if directory exists in state
+        if dir_key not in state.get('directories', {}):
+            return 0
+
+        dir_state = state['directories'][dir_key]
+
+        # Strategy 1: Try to find by relative path (most robust)
+        saved_path = dir_state.get('last_image_path')
+        if saved_path:
+            try:
+                full_path = self.root_dir / saved_path
+                if full_path in self.image_paths:
+                    return self.image_paths.index(full_path)
+            except (ValueError, OSError):
+                pass  # Path not found, try index
+
+        # Strategy 2: Use saved index if valid
+        saved_index = dir_state.get('last_index', 0)
+        if 0 <= saved_index < len(self.image_paths):
+            return saved_index
+
+        # Strategy 3: Default to beginning
+        return 0
+
+    def save_current_state(self):
+        """
+        Save the current slideshow position to state file.
+        Called from quit() method.
+        """
+        # Load existing state
+        state = load_state()
+
+        # Normalize directory path
+        dir_key = normalize_directory_path(self.root_dir)
+
+        # Compute relative path from current image
+        current_image = self.image_paths[self.current_index]
+        relative_path = str(current_image.relative_to(self.root_dir))
+
+        # Update state for this directory
+        state['directories'][dir_key] = {
+            'last_image_path': relative_path,
+            'last_index': self.current_index,
+            'total_images': len(self.image_paths),
+            'last_updated': datetime.now().isoformat()
+        }
+
+        # Save updated state
+        save_state(state)
+
     def toggle_auto_play(self):
         """Toggle auto-play mode"""
         self.auto_play = not self.auto_play
@@ -191,6 +344,7 @@ class ImageSlideshow:
     
     def quit(self):
         """Quit the application"""
+        self.save_current_state()
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
         if self.resize_timer_id:
@@ -230,6 +384,7 @@ Controls:
 Examples:
   %(prog)s /path/to/photos
   %(prog)s /path/to/photos --fullscreen --delay 5
+  %(prog)s /path/to/photos --continue  (resume from last position)
   %(prog)s . --delay 0  (manual mode, current directory)
         """
     )
@@ -253,7 +408,14 @@ Examples:
         default=3,
         help='Delay between images in seconds (0 = manual only, default: 3)'
     )
-    
+
+    parser.add_argument(
+        '-c', '--continue',
+        action='store_true',
+        dest='resume',
+        help='Resume from last viewed image in this directory'
+    )
+
     args = parser.parse_args()
     
     # Validate directory
@@ -263,9 +425,9 @@ Examples:
     
     # Convert delay to milliseconds
     delay_ms = args.delay * 1000
-    
+
     # Create and run slideshow
-    slideshow = ImageSlideshow(args.directory, args.fullscreen, delay_ms)
+    slideshow = ImageSlideshow(args.directory, args.fullscreen, delay_ms, resume=args.resume)
     slideshow.run()
 
 
