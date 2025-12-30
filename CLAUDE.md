@@ -16,6 +16,8 @@ A Python-based image slideshow application that recursively searches directories
 - Auto-play with configurable delay
 - Manual navigation (arrow keys)
 - Fullscreen mode toggle
+- Resume from last viewed image (--continue)
+- Folder filtering with ignore.json
 - Supports: .jpg, .jpeg, .png, .gif, .bmp, .webp, .tiff, .tif
 
 ## Installation
@@ -49,6 +51,12 @@ The script has a shebang pointing to `/opt/homebrew/bin/python3.12`, so you can 
 
 # Manual mode (no auto-advance)
 ./slideshow.py /path/to/photos --delay 0
+
+# Resume from last viewed image
+./slideshow.py /path/to/photos --continue
+
+# Disable folder filtering
+./slideshow.py /path/to/photos --no-ignore
 ```
 
 Or explicitly use Homebrew Python:
@@ -65,15 +73,81 @@ Or explicitly use Homebrew Python:
 - F: Toggle fullscreen
 - Q or Escape: Quit
 
+## Resume Functionality
+
+The application automatically saves your position when you quit and can resume from where you left off.
+
+**State File**: `slideshow_state.json` (in project directory)
+
+**How it works**:
+- Tracks last viewed image for each directory separately
+- Saves both image path (relative) and index for robustness
+- Uses path-based resume (most reliable)
+- Falls back to index-based resume if path not found and image count unchanged
+- Starts from beginning if filtering changes image count
+
+**Usage**: Run with `--continue` flag to resume from last position
+
+**Resume Strategy**:
+1. Try to find saved image by path (works even if filtering changed)
+2. Use saved index only if total image count matches
+3. Default to beginning with informative message if count changed
+
+## Folder Ignore Functionality
+
+Exclude images in specific subfolders from the slideshow using an ignore list.
+
+**Ignore File**: `ignore.json` (in project directory)
+
+**Structure**:
+```json
+{
+  "ignore_folders": [
+    "PREVIEW",
+    "THUMBNAIL"
+  ]
+}
+```
+
+**Behavior**:
+- Auto-created with defaults on first run if missing
+- Case-sensitive exact folder name matching
+- Excludes images if ANY parent folder matches ignore list
+- Fails open (allows all images) on errors
+
+**Examples**:
+- If ignore list contains `["PREVIEW"]`:
+  - ✅ Include: `/photos/2024/vacation/beach.jpg`
+  - ❌ Exclude: `/photos/2024/PREVIEW/beach.jpg`
+  - ❌ Exclude: `/photos/PREVIEW/2024/beach.jpg`
+  - ✅ Include: `/photos/2024/preview/beach.jpg` (case-sensitive)
+
+**Usage**:
+- Filtering enabled by default
+- Use `--no-ignore` flag to bypass filtering temporarily
+- Edit `ignore.json` to customize folder list
+
+**Integration with Resume**:
+- Resume checks if saved image is in ignored folder
+- Provides clear message when saved image is filtered
+- Only uses index fallback if image count unchanged
+- Prevents resuming at wrong image when filtering changes
+
 ## Architecture
 
 Single-file application with `ImageSlideshow` class that:
-1. Recursively finds images using `Path.rglob()`
-2. Maintains image list sorted by path
-3. Uses Tkinter Label for image display with aspect-ratio-preserving thumbnail resizing
-4. Implements auto-advance timer with `root.after()` scheduling
-5. Handles window resize events with debouncing to redisplay current image at new size
-6. Uses PhotoImage to convert PIL images for Tkinter display
+1. Recursively finds images using `Path.rglob()` with optional folder filtering
+2. Filters images based on ignore.json configuration
+3. Maintains image list sorted by path
+4. Uses Tkinter Label for image display with aspect-ratio-preserving thumbnail resizing
+5. Implements auto-advance timer with `root.after()` scheduling
+6. Handles window resize events with debouncing to redisplay current image at new size
+7. Uses PhotoImage to convert PIL images for Tkinter display
+8. Saves/restores slideshow position via JSON state file
+
+**Module-level Functions**:
+- State management: `load_state()`, `save_state()`, `get_state_file_path()`, `normalize_directory_path()`
+- Folder filtering: `load_ignore_list()`, `get_ignore_file_path()`, `should_ignore_path()`
 
 ## Known Issues
 

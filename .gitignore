@@ -1,0 +1,6 @@
+# Runtime state files
+slideshow_state.json
+slideshow_state*.json
+
+# User-specific configuration
+ignore.json
