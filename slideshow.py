@@ -93,8 +93,98 @@ def save_state(state):
             temp_file.unlink()
 
 
+def get_ignore_file_path():
+    """
+    Returns the Path object for the ignore file.
+    Uses script directory to ensure ignore file is with the application.
+    """
+    return Path(__file__).parent / "ignore.json"
+
+
+def load_ignore_list():
+    """
+    Load folder ignore list from ignore.json.
+    Auto-creates file with defaults if missing.
+
+    Returns:
+        set: Set of folder names to ignore (for O(1) lookup)
+    """
+    ignore_file = get_ignore_file_path()
+
+    # Auto-create with defaults if missing
+    if not ignore_file.exists():
+        default_ignore = {
+            "ignore_folders": [
+                "PREVIEW",
+                "THUMBNAIL"
+            ]
+        }
+        try:
+            with open(ignore_file, 'w', encoding='utf-8') as f:
+                json.dump(default_ignore, f, indent=2, ensure_ascii=False)
+            print(f"Created ignore.json with default folders: PREVIEW, THUMBNAIL")
+        except Exception as e:
+            print(f"Warning: Could not create ignore.json ({e})")
+            return set()
+
+    # Load the ignore list
+    try:
+        with open(ignore_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Validate structure
+        if not isinstance(data, dict) or 'ignore_folders' not in data:
+            print("Warning: Invalid ignore.json structure, ignoring all filters")
+            return set()
+
+        ignore_list = data['ignore_folders']
+
+        # Validate it's a list
+        if not isinstance(ignore_list, list):
+            print("Warning: ignore_folders must be a list, ignoring all filters")
+            return set()
+
+        # Filter out non-string items
+        valid_folders = set()
+        for item in ignore_list:
+            if isinstance(item, str):
+                valid_folders.add(item)
+            else:
+                print(f"Warning: Skipping invalid folder name: {item}")
+
+        return valid_folders
+
+    except json.JSONDecodeError as e:
+        print(f"Warning: Corrupted ignore.json ({e}), ignoring all filters")
+        return set()
+    except PermissionError:
+        print("Warning: Cannot read ignore.json (permission denied), ignoring all filters")
+        return set()
+    except Exception as e:
+        print(f"Warning: Error loading ignore.json ({e}), ignoring all filters")
+        return set()
+
+
+def should_ignore_path(image_path, ignore_set):
+    """
+    Check if any parent folder in path matches ignore list.
+
+    Args:
+        image_path: Path object to check
+        ignore_set: Set of folder names to ignore
+
+    Returns:
+        bool: True if path should be ignored
+    """
+    # Check if any part of the path matches an ignored folder
+    for part in image_path.parts:
+        if part in ignore_set:
+            return True
+    return False
+
+
 class ImageSlideshow:
-    def __init__(self, root_dir, fullscreen=False, delay=3000, resume=False):
+    def __init__(self, root_dir, fullscreen=False, delay=3000, resume=False, disable_ignore=False):
         """
         Initialize the slideshow
 
@@ -103,6 +193,7 @@ class ImageSlideshow:
             fullscreen: Whether to start in fullscreen mode
             delay: Auto-advance delay in milliseconds (0 = manual only)
             resume: Whether to resume from last viewed image
+            disable_ignore: Whether to disable folder ignore filtering
         """
         self.root_dir = Path(root_dir)
         self.fullscreen = fullscreen
@@ -110,6 +201,7 @@ class ImageSlideshow:
         self.auto_play = delay > 0
         self.timer_id = None
         self.resize_timer_id = None
+        self.disable_ignore = disable_ignore
 
         # Supported image extensions
         self.image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
@@ -168,17 +260,34 @@ class ImageSlideshow:
         self.root.bind('<Configure>', self.on_resize)
     
     def find_images(self):
-        """Recursively find all image files"""
+        """Recursively find all image files, excluding ignored folders"""
+        # Load ignore list (unless disabled)
+        if not self.disable_ignore:
+            ignore_folders = load_ignore_list()
+        else:
+            ignore_folders = set()
+
         image_paths = []
-        
+        filtered_count = 0
+
         for ext in self.image_extensions:
-            # Use rglob for recursive search with pattern
-            image_paths.extend(self.root_dir.rglob(f'*{ext}'))
-            # Also search for uppercase extensions
-            image_paths.extend(self.root_dir.rglob(f'*{ext.upper()}'))
-        
-        # Sort by path for consistent order
+            # Collect all candidates
+            candidates = list(self.root_dir.rglob(f'*{ext}'))
+            candidates.extend(self.root_dir.rglob(f'*{ext.upper()}'))
+
+            # Filter out ignored paths
+            for path in candidates:
+                if not should_ignore_path(path, ignore_folders):
+                    image_paths.append(path)
+                else:
+                    filtered_count += 1
+
+        # Sort and report
         image_paths.sort()
+
+        if filtered_count > 0:
+            print(f"Filtered {filtered_count} images in ignored folders")
+
         return image_paths
     
     def display_image(self):
@@ -266,20 +375,38 @@ class ImageSlideshow:
 
         # Strategy 1: Try to find by relative path (most robust)
         saved_path = dir_state.get('last_image_path')
+        saved_image_filtered = False
+
         if saved_path:
             try:
                 full_path = self.root_dir / saved_path
+
                 if full_path in self.image_paths:
                     return self.image_paths.index(full_path)
+                else:
+                    # Check if image was filtered by ignore list
+                    if full_path.exists() and not self.disable_ignore:
+                        # Image exists but not in list - likely filtered
+                        saved_image_filtered = True
             except (ValueError, OSError):
                 pass  # Path not found, try index
 
-        # Strategy 2: Use saved index if valid
-        saved_index = dir_state.get('last_index', 0)
-        if 0 <= saved_index < len(self.image_paths):
-            return saved_index
+        # Strategy 2: Use saved index only if total image count hasn't changed
+        # (if count changed, filtering likely changed, so index is unreliable)
+        saved_total = dir_state.get('total_images', 0)
+        current_total = len(self.image_paths)
 
-        # Strategy 3: Default to beginning
+        if saved_total == current_total:
+            saved_index = dir_state.get('last_index', 0)
+            if 0 <= saved_index < len(self.image_paths):
+                return saved_index
+
+        # Strategy 3: Default to beginning if image count changed or index invalid
+        if saved_image_filtered:
+            print(f"Note: Last viewed image was in an ignored folder, starting from beginning")
+        elif saved_total != current_total:
+            print(f"Note: Image count changed from {saved_total} to {current_total}, starting from beginning")
+
         return 0
 
     def save_current_state(self):
@@ -385,6 +512,7 @@ Examples:
   %(prog)s /path/to/photos
   %(prog)s /path/to/photos --fullscreen --delay 5
   %(prog)s /path/to/photos --continue  (resume from last position)
+  %(prog)s /path/to/photos --no-ignore  (disable folder filtering)
   %(prog)s . --delay 0  (manual mode, current directory)
         """
     )
@@ -416,6 +544,12 @@ Examples:
         help='Resume from last viewed image in this directory'
     )
 
+    parser.add_argument(
+        '--no-ignore',
+        action='store_true',
+        help='Disable folder ignore filtering (show all images)'
+    )
+
     args = parser.parse_args()
     
     # Validate directory
@@ -427,7 +561,7 @@ Examples:
     delay_ms = args.delay * 1000
 
     # Create and run slideshow
-    slideshow = ImageSlideshow(args.directory, args.fullscreen, delay_ms, resume=args.resume)
+    slideshow = ImageSlideshow(args.directory, args.fullscreen, delay_ms, resume=args.resume, disable_ignore=args.no_ignore)
     slideshow.run()
 
 
