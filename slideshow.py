@@ -258,6 +258,10 @@ class ImageSlideshow:
         self.root.bind('<space>', lambda e: self.toggle_auto_play())
         self.root.bind('f', lambda e: self.toggle_fullscreen())
         self.root.bind('<Configure>', self.on_resize)
+
+        # Bind number keys for delay adjustment
+        for i in range(10):
+            self.root.bind(str(i), lambda e, seconds=i: self.set_delay(seconds))
     
     def find_images(self):
         """Recursively find all image files, excluding ignored folders"""
@@ -327,7 +331,8 @@ class ImageSlideshow:
 
             # Update info label
             relative_path = image_path.relative_to(self.root_dir)
-            status = "▶ AUTO" if self.auto_play else "⏸ MANUAL"
+            delay_seconds = self.delay // 1000
+            status = f"▶ AUTO ({delay_seconds}s)" if self.auto_play else f"⏸ MANUAL ({delay_seconds}s)"
             self.info_label.config(
                 text=f"{status} | {self.current_index + 1}/{len(self.image_paths)} | {relative_path}"
             )
@@ -353,6 +358,33 @@ class ImageSlideshow:
         """Show previous image"""
         self.current_index = (self.current_index - 1) % len(self.image_paths)
         self.display_image()
+
+    def set_delay(self, seconds):
+        """
+        Set the auto-play delay to specified number of seconds.
+
+        Args:
+            seconds: Delay in seconds (0 = manual only)
+        """
+        self.delay = seconds * 1000  # Convert to milliseconds
+
+        # Update auto-play state
+        if seconds > 0:
+            self.auto_play = True
+            # Restart display with new delay
+            self.display_image()
+        else:
+            # 0 seconds = manual mode
+            self.auto_play = False
+            if self.timer_id:
+                self.root.after_cancel(self.timer_id)
+                self.timer_id = None
+            # Update status bar
+            relative_path = self.image_paths[self.current_index].relative_to(self.root_dir)
+            delay_seconds = self.delay // 1000
+            self.info_label.config(
+                text=f"⏸ MANUAL ({delay_seconds}s) | {self.current_index + 1}/{len(self.image_paths)} | {relative_path}"
+            )
 
     def get_resume_index(self, state):
         """
@@ -446,8 +478,9 @@ class ImageSlideshow:
                 self.timer_id = None
             # Update info label
             relative_path = self.image_paths[self.current_index].relative_to(self.root_dir)
+            delay_seconds = self.delay // 1000
             self.info_label.config(
-                text=f"⏸ MANUAL | {self.current_index + 1}/{len(self.image_paths)} | {relative_path}"
+                text=f"⏸ MANUAL ({delay_seconds}s) | {self.current_index + 1}/{len(self.image_paths)} | {relative_path}"
             )
     
     def toggle_fullscreen(self):
@@ -484,6 +517,7 @@ class ImageSlideshow:
         print("\nControls:")
         print("  Right Arrow / Left Arrow: Next / Previous image")
         print("  Space: Toggle auto-play")
+        print("  0-9: Set auto-play delay (seconds)")
         print("  F: Toggle fullscreen")
         print("  Q or Escape: Quit")
         print("\nStarting slideshow...\n")
@@ -505,6 +539,7 @@ Controls:
   Right Arrow    Next image
   Left Arrow     Previous image
   Space          Toggle auto-play
+  0-9            Set auto-play delay (seconds)
   F              Toggle fullscreen
   Q or Escape    Quit
 
