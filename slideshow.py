@@ -224,6 +224,9 @@ class ImageSlideshow:
         else:
             self.current_index = 0
 
+        # Track rotation angle for current image (in degrees)
+        self.current_rotation = 0
+
         # Setup GUI
         self.root = Tk()
         self.root.title("Image Slideshow")
@@ -258,6 +261,10 @@ class ImageSlideshow:
         self.root.bind('<space>', lambda e: self.toggle_auto_play())
         self.root.bind('f', lambda e: self.toggle_fullscreen())
         self.root.bind('<Configure>', self.on_resize)
+
+        # Bind rotation keys
+        self.root.bind(',', lambda e: self.rotate_image(-90))  # Counter-clockwise
+        self.root.bind('.', lambda e: self.rotate_image(90))   # Clockwise
 
         # Bind number keys for delay adjustment
         for i in range(10):
@@ -310,6 +317,10 @@ class ImageSlideshow:
             # Load and display image
             img = Image.open(image_path)
 
+            # Apply rotation if needed
+            if self.current_rotation != 0:
+                img = img.rotate(-self.current_rotation, expand=True)
+
             # Get window size
             window_width = self.image_label.winfo_width()
             window_height = self.image_label.winfo_height()
@@ -352,11 +363,23 @@ class ImageSlideshow:
     def next_image(self):
         """Show next image"""
         self.current_index = (self.current_index + 1) % len(self.image_paths)
+        self.current_rotation = 0  # Reset rotation for new image
         self.display_image()
-    
+
     def previous_image(self):
         """Show previous image"""
         self.current_index = (self.current_index - 1) % len(self.image_paths)
+        self.current_rotation = 0  # Reset rotation for new image
+        self.display_image()
+
+    def rotate_image(self, degrees):
+        """
+        Rotate the current image by specified degrees.
+
+        Args:
+            degrees: Rotation amount (positive = clockwise, negative = counter-clockwise)
+        """
+        self.current_rotation = (self.current_rotation + degrees) % 360
         self.display_image()
 
     def set_delay(self, seconds):
@@ -518,6 +541,7 @@ class ImageSlideshow:
         print("  Right Arrow / Left Arrow: Next / Previous image")
         print("  Space: Toggle auto-play")
         print("  0-9: Set auto-play delay (seconds)")
+        print("  , / .: Rotate counter-clockwise / clockwise")
         print("  F: Toggle fullscreen")
         print("  Q or Escape: Quit")
         print("\nStarting slideshow...\n")
@@ -540,6 +564,7 @@ Controls:
   Left Arrow     Previous image
   Space          Toggle auto-play
   0-9            Set auto-play delay (seconds)
+  , / .          Rotate counter-clockwise / clockwise
   F              Toggle fullscreen
   Q or Escape    Quit
 

@@ -7,6 +7,7 @@ A lightweight Python-based image slideshow application that recursively searches
 - **Recursive Directory Search** - Automatically finds all images in nested folder structures
 - **Auto-Play Mode** - Images advance automatically with configurable delay
 - **Dynamic Delay Control** - Change auto-play delay on the fly with number keys (0-9 seconds)
+- **Image Rotation** - Rotate images clockwise or counter-clockwise with , and . keys
 - **Manual Navigation** - Browse images with arrow keys
 - **Fullscreen Support** - Toggle fullscreen mode on/off
 - **Resume Functionality** - Remembers your position in each directory and resume where you left off
@@ -137,6 +138,8 @@ Exclude images from specific subfolders (e.g., thumbnails, previews) using an `i
 | `Left Arrow` | Previous image |
 | `Space` | Toggle auto-play on/off |
 | `0-9` | Set auto-play delay (0=manual, 1-9=seconds) |
+| `,` | Rotate image counter-clockwise (90°) |
+| `.` | Rotate image clockwise (90°) |
 | `F` | Toggle fullscreen mode |
 | `Q` or `Escape` | Quit application |
 

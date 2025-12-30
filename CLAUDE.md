@@ -15,6 +15,7 @@ A Python-based image slideshow application that recursively searches directories
 - Recursive directory search for images
 - Auto-play with configurable delay
 - Dynamic delay control (change delay on the fly with number keys 0-9)
+- Image rotation (rotate clockwise/counter-clockwise with ,/. keys)
 - Manual navigation (arrow keys)
 - Fullscreen mode toggle
 - Resume from last viewed image (--continue)
@@ -72,6 +73,8 @@ Or explicitly use Homebrew Python:
 - Left Arrow: Previous image
 - Space: Toggle auto-play
 - 0-9: Set auto-play delay (0=manual mode, 1-9=seconds)
+- , (comma): Rotate image counter-clockwise (90°)
+- . (period): Rotate image clockwise (90°)
 - F: Toggle fullscreen
 - Q or Escape: Quit
 
