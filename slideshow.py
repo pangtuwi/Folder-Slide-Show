@@ -184,7 +184,7 @@ def should_ignore_path(image_path, ignore_set):
 
 
 class ImageSlideshow:
-    def __init__(self, root_dir, fullscreen=False, delay=3000, resume=False, disable_ignore=False):
+    def __init__(self, root_dir, fullscreen=False, delay=3000, resume=False, disable_ignore=False, start_index=None):
         """
         Initialize the slideshow
 
@@ -194,6 +194,7 @@ class ImageSlideshow:
             delay: Auto-advance delay in milliseconds (0 = manual only)
             resume: Whether to resume from last viewed image
             disable_ignore: Whether to disable folder ignore filtering
+            start_index: Optional starting image index (0-based, overrides resume)
         """
         self.root_dir = Path(root_dir)
         self.fullscreen = fullscreen
@@ -215,8 +216,18 @@ class ImageSlideshow:
             print("No images found!")
             sys.exit(1)
 
-        # Handle resume functionality
-        if resume:
+        # Determine starting index (priority: start_index > resume > 0)
+        if start_index is not None:
+            # Validate and use provided start index
+            if 0 <= start_index < len(self.image_paths):
+                self.current_index = start_index
+                print(f"Starting at image {self.current_index + 1}/{len(self.image_paths)}")
+            else:
+                print(f"Warning: Invalid start index {start_index} (valid range: 0-{len(self.image_paths)-1})")
+                print("Starting from beginning instead")
+                self.current_index = 0
+        elif resume:
+            # Handle resume functionality
             state = load_state()
             self.current_index = self.get_resume_index(state)
             if self.current_index > 0:
@@ -255,7 +266,7 @@ class ImageSlideshow:
         
         # Bind keyboard events
         self.root.bind('<Escape>', lambda e: self.quit())
-        self.root.bind('q', lambda e: self.quit())
+        self.root.bind('q', lambda e: self.quit_without_saving())
         self.root.bind('<Right>', lambda e: self.next_image())
         self.root.bind('<Left>', lambda e: self.previous_image())
         self.root.bind('<space>', lambda e: self.toggle_auto_play())
@@ -526,7 +537,7 @@ class ImageSlideshow:
             self.resize_timer_id = self.root.after(100, self.display_image)
     
     def quit(self):
-        """Quit the application"""
+        """Quit the application and save state"""
         self.save_current_state()
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
@@ -534,7 +545,16 @@ class ImageSlideshow:
             self.root.after_cancel(self.resize_timer_id)
         self.root.quit()
         self.root.destroy()
-    
+
+    def quit_without_saving(self):
+        """Quit the application without saving state"""
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+        if self.resize_timer_id:
+            self.root.after_cancel(self.resize_timer_id)
+        self.root.quit()
+        self.root.destroy()
+
     def run(self):
         """Start the slideshow"""
         print("\nControls:")
@@ -543,7 +563,8 @@ class ImageSlideshow:
         print("  0-9: Set auto-play delay (seconds)")
         print("  , / .: Rotate counter-clockwise / clockwise")
         print("  F: Toggle fullscreen")
-        print("  Q or Escape: Quit")
+        print("  Q: Quit without saving position")
+        print("  Escape: Quit and save position")
         print("\nStarting slideshow...\n")
         # Ensure window is visible and raised
         self.root.deiconify()
@@ -566,12 +587,14 @@ Controls:
   0-9            Set auto-play delay (seconds)
   , / .          Rotate counter-clockwise / clockwise
   F              Toggle fullscreen
-  Q or Escape    Quit
+  Q              Quit without saving position
+  Escape         Quit and save position
 
 Examples:
   %(prog)s /path/to/photos
   %(prog)s /path/to/photos --fullscreen --delay 5
   %(prog)s /path/to/photos --continue  (resume from last position)
+  %(prog)s /path/to/photos --start-index 42  (start at image 42)
   %(prog)s /path/to/photos --no-ignore  (disable folder filtering)
   %(prog)s . --delay 0  (manual mode, current directory)
         """
@@ -610,6 +633,13 @@ Examples:
         help='Disable folder ignore filtering (show all images)'
     )
 
+    parser.add_argument(
+        '-s', '--start-index',
+        type=int,
+        default=None,
+        help='Start slideshow at specific image index (0-based, overrides --continue)'
+    )
+
     args = parser.parse_args()
     
     # Validate directory
@@ -621,7 +651,14 @@ Examples:
     delay_ms = args.delay * 1000
 
     # Create and run slideshow
-    slideshow = ImageSlideshow(args.directory, args.fullscreen, delay_ms, resume=args.resume, disable_ignore=args.no_ignore)
+    slideshow = ImageSlideshow(
+        args.directory,
+        args.fullscreen,
+        delay_ms,
+        resume=args.resume,
+        disable_ignore=args.no_ignore,
+        start_index=args.start_index
+    )
     slideshow.run()
 
 

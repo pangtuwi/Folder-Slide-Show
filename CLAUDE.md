@@ -19,6 +19,7 @@ A Python-based image slideshow application that recursively searches directories
 - Manual navigation (arrow keys)
 - Fullscreen mode toggle
 - Resume from last viewed image (--continue)
+- Start at specific image index (--start-index)
 - Folder filtering with ignore.json
 - Supports: .jpg, .jpeg, .png, .gif, .bmp, .webp, .tiff, .tif
 
@@ -57,6 +58,9 @@ The script has a shebang pointing to `/opt/homebrew/bin/python3.12`, so you can 
 # Resume from last viewed image
 ./slideshow.py /path/to/photos --continue
 
+# Start at specific image index (0-based)
+./slideshow.py /path/to/photos --start-index 42
+
 # Disable folder filtering
 ./slideshow.py /path/to/photos --no-ignore
 ```
@@ -76,11 +80,12 @@ Or explicitly use Homebrew Python:
 - , (comma): Rotate image counter-clockwise (90°)
 - . (period): Rotate image clockwise (90°)
 - F: Toggle fullscreen
-- Q or Escape: Quit
+- Q: Quit without saving position
+- Escape: Quit and save position (for use with --continue)
 
 ## Resume Functionality
 
-The application automatically saves your position when you quit and can resume from where you left off.
+The application can save your position when you quit (press Escape) and resume from where you left off.
 
 **State File**: `slideshow_state.json` (in project directory)
 
@@ -97,6 +102,27 @@ The application automatically saves your position when you quit and can resume f
 1. Try to find saved image by path (works even if filtering changed)
 2. Use saved index only if total image count matches
 3. Default to beginning with informative message if count changed
+
+## Start Index Option
+
+Start the slideshow at a specific image using the `--start-index` option.
+
+**Usage**: `./slideshow.py /path/to/photos --start-index 42`
+
+**How it works**:
+- Index is 0-based (first image = 0, second = 1, etc.)
+- Overrides `--continue` if both are specified
+- Validates index is within valid range (0 to total_images-1)
+- Falls back to beginning with warning if index is invalid
+
+**Examples**:
+```bash
+# Start at the 43rd image (index 42)
+./slideshow.py /path/to/photos --start-index 42
+
+# Start at 10th image with 5 second delay
+./slideshow.py /path/to/photos -s 10 --delay 5
+```
 
 ## Folder Ignore Functionality
 

@@ -11,6 +11,7 @@ A lightweight Python-based image slideshow application that recursively searches
 - **Manual Navigation** - Browse images with arrow keys
 - **Fullscreen Support** - Toggle fullscreen mode on/off
 - **Resume Functionality** - Remembers your position in each directory and resume where you left off
+- **Start Index Option** - Start the slideshow at a specific image index
 - **Folder Ignore Filtering** - Exclude images from specific subfolders (e.g., PREVIEW, THUMBNAIL)
 - **Aspect Ratio Preservation** - Images are scaled to fit the window while maintaining proportions
 - **Multiple Format Support** - Works with `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`, `.tiff`, `.tif`
@@ -56,6 +57,9 @@ brew install python-tk@3.12
 # Resume from last viewed image
 ./slideshow.py /path/to/photos --continue
 
+# Start at specific image index (0-based)
+./slideshow.py /path/to/photos --start-index 42
+
 # Disable folder filtering (show all images)
 ./slideshow.py /path/to/photos --no-ignore
 ```
@@ -63,7 +67,7 @@ brew install python-tk@3.12
 ### Command Line Options
 
 ```
-usage: slideshow.py [-h] [-f] [-d DELAY] [-c] [--no-ignore] [directory]
+usage: slideshow.py [-h] [-f] [-d DELAY] [-c] [--no-ignore] [-s START_INDEX] [directory]
 
 positional arguments:
   directory             Root directory to search for images (default: current directory)
@@ -74,14 +78,17 @@ optional arguments:
   -d DELAY, --delay DELAY
                         Delay between images in seconds (0 = manual only, default: 3)
   -c, --continue        Resume from last viewed image in this directory
+  -s START_INDEX, --start-index START_INDEX
+                        Start slideshow at specific image index (0-based, overrides --continue)
   --no-ignore           Disable folder ignore filtering (show all images)
 ```
 
 ## Resume Functionality
 
-The application automatically remembers your position in each directory you view. When you exit and restart with the `--continue` flag, it will resume from where you left off.
+The application can remember your position in each directory you view. When you exit with Escape (not Q) and restart with the `--continue` flag, it will resume from where you left off.
 
 **How it works:**
+- Press **Escape** to quit and save position, or **Q** to quit without saving
 - Position data is saved to `slideshow_state.json` in the script directory
 - Each directory's state is tracked independently
 - Uses both the image path and index for robust resume (handles file changes)
@@ -141,7 +148,8 @@ Exclude images from specific subfolders (e.g., thumbnails, previews) using an `i
 | `,` | Rotate image counter-clockwise (90°) |
 | `.` | Rotate image clockwise (90°) |
 | `F` | Toggle fullscreen mode |
-| `Q` or `Escape` | Quit application |
+| `Q` | Quit without saving position |
+| `Escape` | Quit and save position (for --continue) |
 
 ## How It Works
 
@@ -150,11 +158,11 @@ The application:
 2. Recursively scans the specified directory for image files
 3. Filters out images in ignored folders (unless `--no-ignore` is used)
 4. Sorts images by path for consistent ordering
-5. Resumes from saved position if `--continue` flag is used
+5. Starts from saved position (if `--continue`), specific index (if `--start-index`), or beginning
 6. Displays images in a Tkinter window with aspect-ratio-preserving scaling
 7. Automatically advances to the next image (if auto-play is enabled)
 8. Handles window resizing dynamically
-9. Saves current position on exit for resume functionality
+9. Saves current position on exit if you press Escape (not Q)
 
 ## License
 
